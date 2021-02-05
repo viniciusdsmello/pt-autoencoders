@@ -1,8 +1,11 @@
+"""Implementation of a Stacked AutoEncoder in PyTorch"""
+
 from collections import OrderedDict
-from cytoolz.itertoolz import concat, sliding_window
-from typing import Callable, Iterable, Optional, Tuple, List
+from typing import Callable, Iterable, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
+from cytoolz.itertoolz import concat, sliding_window
 
 
 def build_units(
@@ -45,6 +48,8 @@ def default_initialise_weight_bias_(
 
 
 class StackedAutoEncoder(nn.Module):
+    """Implementation of a Stacked AutoEncoder network.
+    """
     def __init__(
         self,
         dimensions: List[int],
@@ -64,10 +69,11 @@ class StackedAutoEncoder(nn.Module):
         :param dimensions: list of dimensions occurring in a single stack
         :param activation: activation layer to use for all but final activation, default torch.nn.ReLU
         :param final_activation: final activation layer to use, set to None to disable, default torch.nn.ReLU
-        :param weight_init: function for initialising weight and bias via mutation, defaults to default_initialise_weight_bias_
+        :param weight_init: function for initialising weight and bias via mutation, defaults to
+        default_initialise_weight_bias_
         :param gain: gain parameter to pass to weight_init
         """
-        super(StackedAutoEncoder, self).__init__()
+        super().__init__()
         self.dimensions = dimensions
         self.embedding_dimension = dimensions[0]
         self.hidden_dimension = dimensions[-1]
@@ -80,7 +86,8 @@ class StackedAutoEncoder(nn.Module):
         # construct the decoder
         decoder_units = build_units(reversed(self.dimensions[1:]), activation)
         decoder_units.extend(
-            build_units([self.dimensions[1], self.dimensions[0]], final_activation)
+            build_units([self.dimensions[1], self.dimensions[0]],
+                        final_activation)
         )
         self.decoder = nn.Sequential(*decoder_units)
         # initialise the weights and biases in the layers
@@ -102,5 +109,11 @@ class StackedAutoEncoder(nn.Module):
         return self.encoder[index].linear, self.decoder[-(index + 1)].linear
 
     def forward(self, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Given a batch of Tensors performs a foward pass through all the encoder models to obtain the
+        encoded version then pass it through all the decoder models to reconstruct the data.
+
+        :return: (torch.Tensor) Returns the reconstructed version of the batch by the network.
+        """
         encoded = self.encoder(batch)
         return self.decoder(encoded)

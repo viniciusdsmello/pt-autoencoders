@@ -1,3 +1,5 @@
+"""Implementation of the Stacked AutoEncoder training and prediction."""
+
 from typing import Any, Callable, Optional
 
 import torch
@@ -25,6 +27,7 @@ def train(
     update_callback: Optional[Callable[[float, float], None]] = None,
     num_workers: Optional[int] = None,
     epoch_callback: Optional[Callable[[int, torch.nn.Module], None]] = None,
+    loss_function: torch.nn.Module = nn.MSELoss()
 ) -> None:
     """
     Function to train an autoencoder using the provided dataset. If the dataset consists of 2-tuples or lists of
@@ -45,6 +48,7 @@ def train(
     :param update_callback: optional function of loss and validation loss to update
     :param num_workers: optional number of workers to use for data loading
     :param epoch_callback: optional function of epoch and model
+    :param loss_function: optional loss function, default nn.MSELoss
     :return: None
     """
     dataloader = DataLoader(
@@ -65,13 +69,14 @@ def train(
         )
     else:
         validation_loader = None
-    loss_function = nn.MSELoss()
+
+    if loss_function is None:
+        loss_function = nn.MSELoss()
+
     autoencoder.train()
     validation_loss_value = -1
     loss_value = 0
     for epoch in range(epochs):
-        if scheduler is not None:
-            scheduler.step()
         data_iterator = tqdm(
             dataloader,
             leave=True,
@@ -79,7 +84,7 @@ def train(
             postfix={"epo": epoch, "lss": "%.6f" % 0.0, "vls": "%.6f" % -1, },
             disable=silent,
         )
-        for index, batch in enumerate(data_iterator):
+        for _, batch in enumerate(data_iterator):
             if (
                 isinstance(batch, tuple)
                 or isinstance(batch, list)
@@ -94,7 +99,6 @@ def train(
             else:
                 output = autoencoder(batch)
             loss = loss_function(output, batch)
-            # accuracy = pretrain_accuracy(output, batch)
             loss_value = float(loss.item())
             optimizer.zero_grad()
             loss.backward()
@@ -154,6 +158,8 @@ def train(
             autoencoder.eval()
             epoch_callback(epoch, autoencoder)
             autoencoder.train()
+        if scheduler is not None:
+            scheduler.step()
 
 
 def pretrain(
@@ -177,6 +183,8 @@ def pretrain(
     Given an autoencoder, train it using the data provided in the dataset; for simplicity the accuracy is reported only
     on the training dataset. If the training dataset is a 2-tuple or list of (feature, prediction), then the prediction
     is stripped away.
+
+    The training algorithm follows the Greedy Layerwise Pretraining proposed by Hinton.
 
     :param dataset: instance of Dataset to use for training
     :param autoencoder: instance of an autoencoder to train
@@ -227,7 +235,7 @@ def pretrain(
             batch_size,
             ae_optimizer,
             validation=current_validation,
-            corruption=None,  # already have dropout in the DAE
+            corruption=None,  # already have dropout in the SAE
             scheduler=ae_scheduler,
             cuda=cuda,
             sampler=sampler,

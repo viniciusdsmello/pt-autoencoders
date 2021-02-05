@@ -1,16 +1,20 @@
+"""Implementation of a Vanilla AutoEncoder"""
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from torch.nn import Parameter
 import torch.nn.functional as F
-from typing import Optional
+from torch.nn import Parameter
 
 
 class Autoencoder(nn.Module):
+    """Implementation of a Vanilla AutoEncoder"""
     def __init__(
         self,
         embedding_dimension: int,
         hidden_dimension: int,
         activation: Optional[torch.nn.Module] = nn.ReLU(),
+        corruption: Optional[torch.nn.Module] = None,
         gain: float = nn.init.calculate_gain("relu"),
         tied: bool = False,
     ) -> None:
@@ -21,13 +25,15 @@ class Autoencoder(nn.Module):
         :param hidden_dimension: hidden dimension, output of the encoder
         :param activation: optional activation unit, defaults to nn.ReLU()
         :param gain: gain for use in weight initialisation
+        :param corruption: optional unit to apply to corrupt input during training, defaults to None
         :param tied: whether the autoencoder weights are tied, defaults to False
         """
-        super(Autoencoder, self).__init__()
+        super().__init__()
         self.embedding_dimension = embedding_dimension
         self.hidden_dimension = hidden_dimension
         self.activation = activation
         self.gain = gain
+        self.corruption = corruption
         # encoder parameters
         self.encoder_weight = Parameter(
             torch.Tensor(hidden_dimension, embedding_dimension)
@@ -47,6 +53,7 @@ class Autoencoder(nn.Module):
 
     @property
     def decoder_weight(self):
+        """Get Decoder Weights"""
         return (
             self._decoder_weight
             if self._decoder_weight is not None
@@ -56,7 +63,7 @@ class Autoencoder(nn.Module):
     @staticmethod
     def _initialise_weight_bias(weight: torch.Tensor, bias: torch.Tensor, gain: float):
         """
-        Initialise the weights in a the Linear layers of the Autoencoder.
+        Initialise the weights in a the Linear layers of the Autoencoder with Xavier Initialization.
 
         :param weight: weight Tensor of the Linear layer
         :param bias: bias Tensor of the Linear layer
@@ -82,13 +89,31 @@ class Autoencoder(nn.Module):
         decoder.bias.data.copy_(self.decoder_bias)
 
     def encode(self, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Given a batch of input Tensors performs a foward pass through the encoder to encode the data.
+
+        :return: (torch.Tensor) Returns the encoded version of the input.
+        """
         transformed = F.linear(batch, self.encoder_weight, self.encoder_bias)
         if self.activation is not None:
             transformed = self.activation(transformed)
+        if self.corruption is not None:
+            transformed = self.corruption(transformed)
         return transformed
 
     def decode(self, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Given a batch of encoded Tensors performs a foward pass through the decoder to reconstruct the data.
+
+        :return: (torch.Tensor) Returns the reconstructed version of the batch by the network.
+        """
         return F.linear(batch, self.decoder_weight, self.decoder_bias)
 
     def forward(self, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Given a batch of Tensors performs a foward pass through the encoder to obtain the encoded version
+        then pass it through the decoder to reconstruct the data.
+
+        :return: (torch.Tensor) Returns the reconstructed version of the batch by the network.
+        """
         return self.decode(self.encode(batch))
